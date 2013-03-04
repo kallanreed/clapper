@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Diagnostics;
 
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
@@ -11,22 +12,59 @@ namespace ClapperApp
 {
     class Clapper 
     {
+        enum ClapperState
+        {
+            WaitLow,    // waiting for state to go high
+            WaitHigh,   // waiting for state to go low
+            WaitLow2,   // waiting for second state to go high
+            WaitHigh2,   // waiting for second state to go low
+        }
+
         Timer t; // used for XNA Framework crap
         Microphone m;
 
         byte[] buffer;
+        ClapperState state;
 
-        public delegate void RawClapperAudioLevel(short level);
-        public event RawClapperAudioLevel OnAudioLevelUpdated;
+        Queue<short> window;
+        readonly int windowSize = 20;
+        Stopwatch eventWatch;
+
+        public delegate void RawClapperEventHandler(object sender, RawClapperEventArgs e);
+        public event RawClapperEventHandler OnRawClapperEvent;
+
+        public delegate void OnClapEventHandler(object sender, ClapperEventArgs e);
+        public event OnClapEventHandler OnClap;
+
+        public short UpperThreshold
+        {
+            get;
+            set;
+        }
+
+        public short LowerThreshold
+        {
+            get;
+            set;
+        }
 
         public Clapper()
         {
+            // for pumping XNA framework events
             t = new Timer()
             {
                 Interval = 50,
             };
 
             t.Tick += new EventHandler(t_Tick);
+
+            UpperThreshold = 3000;
+            LowerThreshold = 800;
+            state = ClapperState.WaitLow;
+
+            eventWatch = new Stopwatch();
+
+            window = new Queue<short>();
 
             m = Microphone.Default;
             buffer = new byte[m.GetSampleSizeInBytes(TimeSpan.FromMilliseconds(100))];
@@ -39,26 +77,89 @@ namespace ClapperApp
             FrameworkDispatcher.Update();
         }
 
+        void StateCheck(short v)
+        {
+            if (eventWatch.ElapsedMilliseconds > 1000)
+            {
+                Debug.WriteLine("Timeout: Reset State");
+                state = ClapperState.WaitLow;
+                eventWatch.Reset();
+            }
+
+            switch (state)
+            {
+                case ClapperState.WaitLow:
+                    if (v > UpperThreshold)
+                    {
+                        Debug.WriteLine("WL1 {0}", v);
+                        state = ClapperState.WaitHigh;
+                        eventWatch.Start();
+                    }
+                    break;
+                case ClapperState.WaitHigh:
+                    if (v < LowerThreshold &&
+                        eventWatch.ElapsedMilliseconds > 50)
+                    {
+                        Debug.WriteLine("WH1 {0}", v);
+                        state = ClapperState.WaitLow2;
+                        eventWatch.Restart();
+                    }
+                    break;
+                case ClapperState.WaitLow2:
+                    if (v > UpperThreshold &&
+                        eventWatch.ElapsedMilliseconds > 100)
+                    {
+                        Debug.WriteLine("WL2 {0}", v);
+                        state = ClapperState.WaitHigh2;
+                        eventWatch.Restart();
+                    }
+                    break;
+                case ClapperState.WaitHigh2:
+                    if (v < LowerThreshold &&
+                        eventWatch.ElapsedMilliseconds > 50)
+                    {
+                        Debug.WriteLine("WH2 {0}", v);
+                        state = ClapperState.WaitLow;
+                        eventWatch.Reset();
+
+                        if (OnClap != null)
+                        {
+                            OnClap(this, new ClapperEventArgs());
+                        }
+                    }
+                    break;
+            }
+        }
+
         public void m_BufferReady(object sender, EventArgs e)
         {
             // data returned is 16 bit little endian PCM
             int count = m.GetData(this.buffer);
             short max = 0;
-            short temp;
+            int temp;
 
-            for (int i = 0; i < count; i += 2)
+            for (int i = 0; i < count; i += 2 * 64 /* every 64th value */)
             {
                 temp = BitConverter.ToInt16(buffer, i);
+                temp = Math.Abs(temp);
+                
+                window.Enqueue((short)temp);
+                while (window.Count > windowSize)
+                {
+                    window.Dequeue();
+                }
+                
+                StateCheck((short)window.Average(s => s));
 
                 if (temp > max)
                 {
-                    max = temp;
+                    max = (short)temp;
                 }
             }
 
-            if (OnAudioLevelUpdated != null)
+            if (OnRawClapperEvent != null)
             {
-                OnAudioLevelUpdated(max);
+                OnRawClapperEvent(this, new RawClapperEventArgs() { Level = max });
             }
         }
 
@@ -73,5 +174,18 @@ namespace ClapperApp
             m.Stop();
             t.Stop();
         }
+    }
+
+    public class RawClapperEventArgs : EventArgs
+    {
+        public short Level
+        {
+            get;
+            set;
+        }
+    }
+
+    public class ClapperEventArgs : EventArgs
+    {
     }
 }
