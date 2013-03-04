@@ -148,8 +148,9 @@ namespace ClapperApp
                 {
                     window.Dequeue();
                 }
-                
-                StateCheck((short)window.Average(s => s));
+
+                temp = (int)window.Average(s => s);
+                StateCheck((short)temp);
 
                 if (temp > max)
                 {
