@@ -39,9 +39,9 @@ namespace ClapperApp
         {
             // add a clap list entry for debug
             listBox1.Items.Insert(0, DateTime.Now.ToString("mm:ss.fff"));
-            if (listBox1.Items.Count > 10)
+            if (listBox1.Items.Count > 5)
             {
-                listBox1.Items.RemoveAt(10);
+                listBox1.Items.RemoveAt(5);
             }
 
             // set up clap on/off state
