@@ -8,6 +8,9 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using System.Windows.Forms;
 
+// TODO: This whole thing needs to be re-written to not require XNA
+// It's not available everywhere and it has a bad delay due to pumping
+
 namespace ClapperApp
 {
     class Clapper 
@@ -77,6 +80,9 @@ namespace ClapperApp
             FrameworkDispatcher.Update();
         }
 
+	// This isn't great but the idea is that
+	// there must be two peaks separated by more than 100ms
+	// and those peaks must be within 1 second
         void StateCheck(short v)
         {
             if (eventWatch.ElapsedMilliseconds > 1000)
